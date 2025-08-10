@@ -1,0 +1,393 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Prompt Generator (10 Lists, Single‑File)</title>
+  <style>
+    :root { --maxw: 520px; }
+
+    body {
+      margin: 0; background: #000; color: #fff; font-family: system-ui, Arial, sans-serif;
+      display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-x: hidden;
+    }
+
+    /* Top-right note */
+    #stamp {
+      position: fixed; top: 6px; right: 8px; font-size: 11px; color: #bbb;
+      opacity: .9; z-index: 1100; pointer-events: none; white-space: nowrap; text-align: right;
+    }
+
+    .controls { display: flex; flex-direction: column; align-items: center; width:100%; max-width: var(--maxw); padding: 8px; box-sizing: border-box; }
+
+    .row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; width: 100%; margin: 6px 0; }
+
+    button { padding: 6px 10px; font-size: 13px; background:#333; color:#fff; border: none; border-radius: 8px; cursor: pointer; }
+    button.active { background:#0a84ff; }
+
+    .list-buttons button { background: #181818; border: 1px solid #333; }
+
+    #output { font-weight: 700; text-align: center; margin: 18px 12px 10px; word-break: break-word;
+      font-size: clamp(22px, 7.2vw, 46px); line-height: 1.15; max-width: var(--maxw); }
+
+    .letter { font-weight: 700; margin-right: 4px; }
+    .letter-A { color:#2ecc71; } .wA{color:#2ecc71}
+    .letter-B { color:#3498db; } .wB{color:#3498db}
+    .letter-C { color:#e67e22; } .wC{color:#e67e22}
+    .letter-D { color:#9b59b6; } .wD{color:#9b59b6}
+    .letter-E { color:#e74c3c; } .wE{color:#e74c3c}
+    .letter-F { color:#1abc9c; } .wF{color:#1abc9c}
+    .letter-G { color:#f1c40f; } .wG{color:#f1c40f}
+    .letter-H { color:#95a5a6; } .wH{color:#95a5a6}
+    .letter-I { color:#ff6b6b; } .wI{color:#ff6b6b}
+    .letter-J { color:#bdc3c7; } .wJ{color:#bdc3c7}
+
+    .seq-btn { position: relative; background:#1a1a1a; border:1px solid #333; border-radius:10px; padding:6px 10px; font-size:13px; min-width:46px; }
+    .seq-btn.active { border-color:#0a84ff; box-shadow:0 0 0 1px #0a84ff inset; }
+    .seq-badge { position:absolute; top:-6px; right:-6px; background:#0a84ff; color:#fff; width:18px; height:18px; font-size:11px; border-radius:50%; display:none; align-items:center; justify-content:center; }
+    .seq-btn.active .seq-badge { display:flex; }
+
+    .sequence-help { width:100%; text-align:center; font-size:11px; color:#aaa; margin-top:2px; max-width:var(--maxw); }
+
+    .add-panel { display:flex; gap:6px; width:100%; max-width:var(--maxw); justify-content:center; align-items:center; }
+    .add-panel input { flex:1; min-width:160px; background:#111; color:#fff; border:1px solid #444; border-radius:8px; padding:8px 10px; font-size:13px; }
+
+    .tiny { font-size: 11px; color: #aaa; text-align: center; margin-top: -2px; }
+
+    /* Modal */
+    #modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); justify-content:center; align-items:center; z-index:1000; padding:12px; box-sizing:border-box; }
+    #modalContent { background:#1e1e1e; padding:14px; border-radius:12px; width:100%; max-width:var(--maxw); box-sizing:border-box; }
+    #promptEditor { width:100%; height:300px; background:#000; color:#fff; font-size:14px; padding:8px; border:1px solid #666; border-radius:8px; box-sizing:border-box; }
+    #modalButtons { margin-top:8px; text-align:right; }
+
+    @media (max-width: 420px) {
+      button { font-size:12px; padding:6px 9px; }
+      #stamp { font-size: 10.5px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="stamp">jimmy james — 10.08.2025 — v.06</div>
+
+  <div class="controls">
+    <div class="row list-buttons" id="listButtons"></div>
+
+    <!-- Quick add to CURRENT list -->
+    <div class="add-panel">
+      <input id="addInput" placeholder="Add item(s) to current list… (Enter to add)" />
+      <button id="addBtn" title="Add to list">➕ Add</button>
+      <button id="editBtn" title="Edit full list">✏️ Edit</button>
+      <button id="clearBtn" title="Clear current list">🗑 Clear</button>
+    </div>
+    <div class="tiny">Tip: you can paste multiple items separated by new lines or commas.</div>
+
+    <!-- Names toggle -->
+    <div class="row" id="namesPanel" style="display:none"></div>
+    <div class="row">
+      <button id="namesToggle">📝 Rename Lists</button>
+    </div>
+
+    <!-- Sequence selector -->
+    <div class="row" id="sequencePanel"></div>
+    <div class="row">
+      <button id="resetSeqBtn" title="Clear sequence">♻️ Reset Sequence</button>
+      <button id="singleBtn" title="Use only current list">🎯 Single</button>
+    </div>
+    <div class="sequence-help">Tap letters to set the <u>sequence</u> (1,2,3…). Prompt = one random item from each, joined with spaces.</div>
+  </div>
+
+  <main id="tapArea" aria-label="Tap anywhere for next prompt" style="flex:1; display:flex; align-items:center; justify-content:center; width:100%; padding-bottom:16px;">
+    <div id="output">Your prompt will appear here.</div>
+  </main>
+
+  <!-- Modal: edit current list as text -->
+  <div id="modal">
+    <div id="modalContent">
+      <h3 id="modalTitle">Edit Prompts (<span id="modalListLabel"></span>)</h3>
+      <textarea id="promptEditor" spellcheck="false"></textarea>
+      <div id="modalButtons">
+        <button id="cancelModal">Cancel</button>
+        <button id="saveModal">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Embedded seed JSON (first visit only) -->
+  <script id="seed" type="application/json">
+  {
+    "version": "pg-10lists-v04",
+    "lists": {
+      "A": ["sunny","Zeus","Zachary","Timothy","Melinda","Jerremy","Jeffory","Linda","Veronica","Julie","Anita","Placido","Lorenzo","Loreen","Florencia","Florence","Sara","Margarita","Denver","Brooklyn"],
+      "B": ["Carlisle","Charma","Larson","McCartney","Waterman","Suttcliff","Lancelot","Hamisham","Livingroom","Hammertime","Wonderfine","Mountaintop"],
+      "C": ["- happy","- sad","- yearning","- longing","- regretful","- bashful","- shy","- fidgety","- silent","- secretive"],
+      "D": ["- carpenter","- dj","- musician","- plumber","- ceo","- secretary"],
+      "E": [],
+      "F": ["- fixing a car","- sewing","- preparing a cake","- doing beeding","- playing piano","- practicing guitar","- accounting","- cooking the books","- making soup","- selling tickets","- controlling tickets","- labwork","- drinking","- smoking","- reading a book","- reading the newspaper","- watching tv","-"],
+      "G": ["- world is cruel","- hates job","- loves their family","- tired of everything","- almost going to flip out"],
+      "H": [],
+      "I": [],
+      "J": []
+    },
+    "names": {
+      "A": "first name",
+      "B": "last name",
+      "C": "emotion",
+      "D": "occupation",
+      "E": "location",
+      "F": "object work",
+      "G": "attitude",
+      "H": "List H",
+      "I": "List I",
+      "J": "List J"
+    },
+    "settings": {
+      "combineSequence": ["A","B","C","D","F","G"]
+    }
+  }
+  </script>
+
+  <script>
+    // ===== Core state =====
+    const LETTERS = Array.from('ABCDEFGHIJ');
+    let currentList = 'A';
+    let lists = Object.fromEntries(LETTERS.map(l => [l, []]));
+    const defaultNames = Object.fromEntries(LETTERS.map(l => [l, 'List ' + l]));
+    let names = { ...defaultNames };
+    let combineSequence = []; // e.g. ['A','C','D']
+
+    // ===== Utilities =====
+    const $ = sel => document.querySelector(sel);
+    function coloredLetterSpan(letter){ return `<span class="letter letter-${letter}">${letter}</span>`; }
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+    function cleanItem(item){ return String(item).replace(/^\s*-\s*/, '').replace(/\s+/g, ' ').trim(); }
+    function randFrom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+    // ===== Build UI =====
+    const listButtons = $('#listButtons');
+    const namesPanel  = $('#namesPanel');
+    const sequencePanel = $('#sequencePanel');
+    const output = $('#output');
+
+    function buildListButtons(){
+      listButtons.innerHTML = '';
+      LETTERS.forEach(l => {
+        const b = document.createElement('button');
+        b.id = 'btn' + l;
+        b.innerHTML = `${coloredLetterSpan(l)}${escapeHtml(getListName(l))}`;
+        b.onclick = () => switchList(l);
+        listButtons.appendChild(b);
+      });
+    }
+    function updateListButtonsTexts(){
+      LETTERS.forEach(l => {
+        const b = document.getElementById('btn' + l);
+        if (b) b.innerHTML = `${coloredLetterSpan(l)}${escapeHtml(getListName(l))}`;
+      });
+    }
+
+    function buildNamesPanel(){
+      namesPanel.innerHTML = '';
+      LETTERS.forEach(l => {
+        const wrap = document.createElement('div');
+        wrap.style.display = 'flex'; wrap.style.alignItems='center'; wrap.style.gap='6px';
+        wrap.style.background = '#1a1a1a'; wrap.style.border='1px solid #333'; wrap.style.borderRadius='8px'; wrap.style.padding='6px 8px';
+        const tag = document.createElement('span'); tag.textContent = l; tag.style.fontSize='12px'; tag.style.color='#aaa'; tag.style.minWidth='1.5em'; tag.style.textAlign='center';
+        const inp = document.createElement('input'); inp.placeholder = 'List '+l; inp.value = getListName(l);
+        inp.style.background='#111'; inp.style.color='#fff'; inp.style.border='1px solid #444'; inp.style.borderRadius='8px'; inp.style.padding='6px 8px'; inp.style.fontSize='13px';
+        inp.dataset.letter = l;
+        inp.addEventListener('input', (e)=>{
+          names[l] = e.target.value || defaultNames[l];
+          localStorage.setItem('promptListNames', JSON.stringify(names));
+          updateListButtonsTexts();
+          if ($('#modal').style.display==='flex') $('#modalListLabel').textContent = getListName(currentList);
+        });
+        wrap.appendChild(tag); wrap.appendChild(inp); namesPanel.appendChild(wrap);
+      });
+    }
+
+    function buildSequencePanel(){
+      sequencePanel.innerHTML = '';
+      LETTERS.forEach(l => {
+        const btn = document.createElement('button');
+        btn.className = 'seq-btn'; btn.dataset.letter=l; btn.id = 'seq_'+l; btn.innerHTML = coloredLetterSpan(l);
+        const badge = document.createElement('div'); badge.className='seq-badge'; badge.textContent=''; btn.appendChild(badge);
+        btn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleSeqLetter(l); });
+        sequencePanel.appendChild(btn);
+      });
+      refreshSequenceBadges();
+    }
+
+    // ===== Names helpers =====
+    function getListName(letter){ return names[letter] || defaultNames[letter]; }
+
+    // ===== Switch / Generate =====
+    function switchList(letter){
+      currentList = letter;
+      document.querySelectorAll('.list-buttons button').forEach(x=>x.classList.remove('active'));
+      const active = document.getElementById('btn'+letter); if (active) active.classList.add('active');
+      generatePrompt();
+      updateTitleForModal();
+      $('#addInput').focus();
+    }
+
+    function getRandomFrom(letter){ const list = lists[letter] || []; return list.length? randFrom(list) : null; }
+
+    function generatePrompt(){
+      let html = '';
+      if (combineSequence.length){
+        const parts = [];
+        combineSequence.forEach(l => {
+          const item = getRandomFrom(l);
+          if (item){ const cleaned = cleanItem(item); if (cleaned) parts.push(`<span class="w${l}">${escapeHtml(cleaned)}</span>`); }
+        });
+        html = parts.length ? parts.join(' ') : 'No prompts in selected lists';
+      } else {
+        const item = getRandomFrom(currentList);
+        const cleaned = item ? cleanItem(item) : null;
+        html = cleaned ? `<span class="w${currentList}">${escapeHtml(cleaned)}</span>` : `[No items in ${escapeHtml(getListName(currentList))}]`;
+      }
+      output.innerHTML = html;
+    }
+
+    // ===== Sequence logic =====
+    function toggleSeqLetter(letter){
+      const i = combineSequence.indexOf(letter);
+      if (i>=0) combineSequence.splice(i,1); else combineSequence.push(letter);
+      localStorage.setItem('combineSequence', JSON.stringify(combineSequence));
+      refreshSequenceBadges();
+      generatePrompt();
+    }
+    function refreshSequenceBadges(){
+      LETTERS.forEach(l => {
+        const btn = document.getElementById('seq_'+l); if (!btn) return;
+        const badge = btn.querySelector('.seq-badge');
+        const idx = combineSequence.indexOf(l);
+        if (idx>=0){ btn.classList.add('active'); badge.textContent = String(idx+1); }
+        else { btn.classList.remove('active'); badge.textContent=''; }
+      });
+    }
+
+    // ===== Add / Edit / Clear =====
+    function addItemsToCurrentList(raw){
+      if (!raw) return 0;
+      const parts = String(raw).split(/\n|,/g).map(cleanItem).filter(Boolean);
+      if (!parts.length) return 0;
+      const current = lists[currentList] || [];
+      // append (keep order), avoid adding exact duplicates immediately next to each other
+      let added = 0;
+      parts.forEach(p => {
+        if (!current.includes(p)) { current.push(p); added++; }
+      });
+      lists[currentList] = current;
+      localStorage.setItem('promptList_'+currentList, JSON.stringify(current));
+      return added;
+    }
+
+    function openModal(){
+      $('#promptEditor').value = (lists[currentList]||[]).join('\n');
+      updateTitleForModal();
+      $('#modal').style.display = 'flex';
+      $('#promptEditor').focus();
+    }
+    function updateTitleForModal(){ $('#modalListLabel').textContent = getListName(currentList) + ` (List ${currentList})`; }
+    function closeModal(){ $('#modal').style.display = 'none'; }
+    function savePrompts(){
+      const arr = $('#promptEditor').value.split('\n').map(cleanItem).filter(Boolean);
+      lists[currentList] = arr;
+      localStorage.setItem('promptList_'+currentList, JSON.stringify(arr));
+      closeModal();
+      generatePrompt();
+    }
+    function clearCurrentList(){
+      if (!confirm(`Clear all items in "${getListName(currentList)}"?`)) return;
+      lists[currentList] = [];
+      localStorage.setItem('promptList_'+currentList, JSON.stringify([]));
+      generatePrompt();
+    }
+
+    // ===== Seed / Load =====
+    function loadInitialFromSeed(){
+      if (localStorage.getItem('initializedFromSeed') === 'true') return;
+      try {
+        const el = document.getElementById('seed');
+        if (!el) return;
+        const raw = (el.textContent || el.innerText || '').trim();
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        // lists
+        if (data.lists && typeof data.lists === 'object') {
+          LETTERS.forEach(l => { lists[l] = Array.isArray(data.lists[l]) ? data.lists[l].map(cleanItem).filter(Boolean) : []; });
+        }
+        // names
+        if (data.names && typeof data.names === 'object') { names = { ...defaultNames, ...data.names }; }
+        // settings
+        if (data.settings) {
+          const s = data.settings;
+          if (Array.isArray(s.combineSequence)) combineSequence = s.combineSequence.filter(x => LETTERS.includes(x));
+          if (Array.isArray(s.combineSelection) && !combineSequence.length) combineSequence = s.combineSelection.filter(x => LETTERS.includes(x));
+        }
+        // persist
+        LETTERS.forEach(l => localStorage.setItem('promptList_'+l, JSON.stringify(lists[l])));
+        localStorage.setItem('promptListNames', JSON.stringify(names));
+        localStorage.setItem('combineSequence', JSON.stringify(combineSequence));
+        localStorage.setItem('initializedFromSeed', 'true');
+        console.log('Initialized from embedded seed ✅');
+      } catch(e){ console.warn('Seed parse skipped:', e); }
+    }
+
+    function loadSettings(){
+      // lists
+      LETTERS.forEach(l => {
+        const stored = localStorage.getItem('promptList_'+l);
+        if (stored) lists[l] = JSON.parse(stored);
+      });
+      // names
+      try { names = { ...defaultNames, ...(JSON.parse(localStorage.getItem('promptListNames')||'{}')) }; } catch(e) {}
+      // sequence
+      try { combineSequence = (JSON.parse(localStorage.getItem('combineSequence')||'[]')).filter(x => LETTERS.includes(x)); } catch(e) { combineSequence = []; }
+    }
+
+    // ===== Boot =====
+    function boot(){
+      buildListButtons();
+      buildNamesPanel();
+      buildSequencePanel();
+      loadInitialFromSeed();
+      loadSettings();
+      switchList('A');
+    }
+
+    // ===== Wire up controls =====
+    document.addEventListener('click', (e)=>{
+      // Generate on background click
+      if (!e.target.closest('.controls') && !e.target.closest('#modal')) generatePrompt();
+    });
+    document.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter' && document.activeElement === $('#addInput')) { $('#addBtn').click(); }
+      if (e.key === 'Escape' && $('#modal').style.display==='flex') closeModal();
+      if (e.key === ' ' && $('#modal').style.display!=='flex') { e.preventDefault(); generatePrompt(); }
+    });
+
+    $('#addBtn').addEventListener('click', ()=>{
+      const input = $('#addInput');
+      const added = addItemsToCurrentList(input.value);
+      if (added>0) { input.value=''; generatePrompt(); }
+    });
+    $('#editBtn').addEventListener('click', openModal);
+    $('#clearBtn').addEventListener('click', clearCurrentList);
+    $('#namesToggle').addEventListener('click', ()=>{
+      namesPanel.style.display = namesPanel.style.display==='none' ? 'flex' : 'none';
+    });
+
+    $('#resetSeqBtn').addEventListener('click', ()=>{ combineSequence = []; localStorage.setItem('combineSequence','[]'); refreshSequenceBadges(); generatePrompt(); });
+    $('#singleBtn').addEventListener('click', ()=>{ combineSequence = []; localStorage.setItem('combineSequence','[]'); refreshSequenceBadges(); generatePrompt(); });
+
+    $('#cancelModal').addEventListener('click', closeModal);
+    $('#saveModal').addEventListener('click', savePrompts);
+
+    // Start
+    boot();
+  </script>
+</body>
+</html>
